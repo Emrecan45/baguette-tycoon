@@ -1,0 +1,46 @@
+{
+  "name": "baguette-tycoon",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build && vite build --mode basic",
+    "preview": "vite preview",
+    "build:full": "vite build",
+    "build:basic": "vite build --mode basic",
+    "lint": "eslint . --max-warnings 0 && node tools/check-source.mjs",
+    "test": "node tools/check-offline.mjs",
+    "test:smoke": "node tools/marketing/smoke-recording.mjs",
+    "marketing:record": "node tools/marketing/record.mjs",
+    "marketing:preview": "node tools/marketing/record.mjs --preview",
+    "marketing:verify": "node tools/marketing/verify-videos.mjs"
+  },
+  "dependencies": {
+    "@fontsource/lilita-one": "^5.2.5",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "acorn": "^8.19.0",
+    "eslint": "^10.14.0",
+    "playwright": "^1.65.0",
+    "sharp": "^0.35.5",
+    "vite": "^7.1.0"
+  },
+  "description": "A browser bakery tycoon built with Three.js and Vite.",
+  "author": "Emrecan45",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Emrecan45/baguette-tycoon.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Emrecan45/baguette-tycoon/issues"
+  },
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.8"
+  }
+}

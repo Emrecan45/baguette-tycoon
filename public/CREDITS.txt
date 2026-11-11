@@ -1,0 +1,12 @@
+Baguette Tycoon
+
+Developer: Emrecan45
+Original characters, bakery models, procedural geometry and interface artwork.
+Vegetation: Ultimate Stylized Nature by Quaternius, CC0, https://quaternius.com/
+Sound effects except sale.mp3: Kenney audio packs, CC0, https://kenney.nl/
+Register sound: original procedural synthesis.
+Music: generated for the project using ElevenLabs Sound Effects.
+Cover and loading artwork: generated using OpenAI image generation.
+Font: Lilita One by Juan Pablo del Peral, SIL OFL 1.1.
+Rendering: Three.js, MIT.
+Full attribution and license details: CREDITS.md in the source repository.

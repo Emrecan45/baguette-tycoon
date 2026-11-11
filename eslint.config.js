@@ -1,0 +1,1 @@
+export default [{ ignores: ['node_modules/**', 'dist/**', 'dist-basic/**', 'tmp/**'] }, { files: ['src/**/*.js', 'tools/**/*.mjs', 'tools/**/*.js', '*.js'], languageOptions: { ecmaVersion: 'latest', sourceType: 'module' }, rules: { 'no-unused-vars': ['error', { ignoreRestSiblings: true, args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }] } }];
