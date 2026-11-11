@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+import fs from 'node:fs/promises';
+const browser = await chromium.launch({channel:'chrome',headless:true,args:['--use-angle=d3d11']});
+const page=await browser.newPage({viewport:{width:1440,height:1000}});
+await page.route('https://**/*', r=>r.abort());
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto('http://127.0.0.1:5194/?debug=23&nointro&q=1');
+await page.waitForFunction(()=>window.bt);await page.waitForTimeout(2500);
+await fs.mkdir('tmp/layout-review',{recursive:true});
+console.log(await page.evaluate(async()=>{const {World}=await import('/src/world.js');bt.freeCam=true;bt.camera.position.set(5,48,23);bt.camera.lookAt(5,0,-7);return {areas:World.AREAS,game:bt.state()};}));
+await page.screenshot({path:'tmp/layout-review/overview.png'});
+await page.evaluate(()=>{bt.freeCam=false;bt.player.pos.set(-3.5,0,2.5)});await page.waitForTimeout(1000);
+await page.screenshot({path:'tmp/layout-review/play.png'});
+await page.setViewportSize({width:390,height:844});await page.waitForTimeout(1000);
+await page.screenshot({path:'tmp/layout-review/mobile.png'});
+console.log({errors});await browser.close();
