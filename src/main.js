@@ -104,6 +104,12 @@ const earlySave = (() => {
 const earlyParams = new URLSearchParams(location.search);
 const PRESTIGE0 = earlyParams.has('debug') ? (+earlyParams.get('bakery') || 0) : ((earlySave && earlySave.prestige) | 0);
 
+let shadowsAt = 0;
+function still(o) {
+  o.traverse((m) => { if (m.isMesh && m.castShadow) m.userData.still = true; });
+  shadowsAt = performance.now() + 600;
+}
+
 World.ext = 0;
 World.build(root);
 const hud = new HUD(document.body, camera, root);
@@ -121,6 +127,7 @@ counters.push(new Counter(root, at(-2.2), at(-1.0), at(-2.2) + 2.1, at(-1.0) - 0
 addMachine('petrin', -5.45, 1.7, -90, true);
 
 const trashes = [new TrashBin(root, at(-4.85), at(-0.5), at(-5.55), at(-0.5))];
+still(root);
 
 const SHIRTS = ['#E53935', '#43A047', '#8E24AA', '#FB8C00', '#1E88E5', '#00ACC1', '#F06292', '#FDD835', '#6D4C41', '#5C6BC0'];
 const PANTS = ['#2F3B55', '#3E2723', '#263238', '#37474F', '#1A237E', '#4E342E', '#455A64'];
@@ -202,18 +209,22 @@ function addMachine(type, x, z, rot, instant) {
   const m = new Machine(root, root, type, x, z, rot);
   m.onMake = () => sfx.oven();
   machines.push(m);
+  still(m.root);
   if (!instant) { pop(m.root, 1, 0.5); confetti(x, 2.0, z); if (m.input) firstHint(m); }
 }
 function addTable(x, z, instant) {
   x = at(x); z = at(z);
   const tb = new CafeTable(root, x, z, ['#E2463B', '#2E6FB7', '#2E8B57'][tables.length % 3]);
   tables.push(tb);
+  still(tb.root);
   if (!instant) { pop(tb.root, 1, 0.5); confetti(x, 1.6, z); if (tables.length === 1) hint = { type: 'table' }; }
 }
 function openArea(name, instant) {
   World.openArea(name, instant);
   if (name === 'fournil') trashes.push(new TrashBin(root, at(-4.65), at(9.3), at(-5.45), at(9.3)));
   if (name === 'terrace') trashes.push(new TrashBin(root, at(7.0), at(-2.4), at(7.0), at(-3.1)));
+  still(trashes[trashes.length - 1].root);
+  shadowsAt += 300;
   if (!instant) { sfx.door(); }
   if (!instant) { confetti(World.DOORS[name].cx, 2.4, World.DOORS[name].cz); }
 }
@@ -223,12 +234,14 @@ function addOven(x, z, instant, kind = 'baguette') {
   const o = new Oven(root, root, x, z, kind);
   o.onBake = () => sfx.oven();
   ovens.push(o);
+  still(o.root);
   if (!instant) { pop(o.root, 1, 0.5); confetti(x, 2.2, z); }
 }
 function addCounter(x, instant) {
   x = at(x);
   const c = new Counter(root, x, at(-1.0), x + 2.25, at(-1.0) - 0.05, 1);
   counters.push(c);
+  still(c.root);
   addCashier(counters.length - 1, true);
   if (!instant) { pop(c.root, 1, 0.5); pop(c.cashier.root, 1, 0.5); confetti(x, 1.6, -1); }
 }
@@ -772,6 +785,7 @@ function load() {
   applyStats();
   if (World.AREAS.terrace.open && !trashes.some((t) => t.root.position.x > at(6.0))) {
     trashes.push(new TrashBin(root, at(7.0), at(-2.4), at(7.0), at(-3.1)));
+    still(trashes[trashes.length - 1].root);
   }
 }
 addEventListener('visibilitychange', () => { if (document.hidden) save(); });
@@ -1502,15 +1516,56 @@ function updateDust(dt) {
 
 const QKEY = 'baguette-tycoon-quality';
 const QUALITY = [
-  { dpr: 1.5, shadow: 2048, soft: true, every: 1 },
-  { dpr: 1.25, shadow: 2048, soft: true, every: 1 },
-  { dpr: 1, shadow: 1024, soft: false, every: 1 },
-  { dpr: 0.85, shadow: 1024, soft: false, every: 2 },
-  { dpr: 0.7, shadow: 512, soft: false, every: 3 },
+  { dpr: 1.5, shadow: 2048, soft: true },
+  { dpr: 1.25, shadow: 2048, soft: true },
+  { dpr: 1, shadow: 1024, soft: false },
+  { dpr: 0.85, shadow: 1024, soft: false, still: true },
+  { dpr: 0.7, shadow: 1024, soft: false, still: true },
 ];
 let qLevel = (() => { try { return Math.max(0, Math.min(QUALITY.length - 1, (+localStorage.getItem(QKEY) || 0) - 1)); } catch (e) { return 0; } })();
 if (params.has('q')) qLevel = Math.max(0, Math.min(QUALITY.length - 1, +params.get('q') || 0));
-let shadowFrame = 0;
+const blobs = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(0,0,0,1)');
+  r.addColorStop(0.55, 'rgba(0,0,0,0.75)');
+  r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  const m = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), color: '#000000', transparent: true, opacity: 0.32, depthWrite: false }), 96);
+  m.frustumCulled = false;
+  m.renderOrder = 1;
+  m.count = 0;
+  m.visible = false;
+  root.add(m);
+  return m;
+})();
+const _blob = new THREE.Matrix4();
+function updateBlobs() {
+  if (!blobs.visible) return;
+  let n = 0;
+  const put = (ch) => {
+    if (n >= 96 || !ch.root.parent) return;
+    const s = ch.scale * 1.05 * ch.root.scale.x;
+    _blob.makeScale(s, 1, s).setPosition(ch.pos.x, 0.025, ch.pos.z);
+    blobs.setMatrixAt(n++, _blob);
+  };
+  for (const ch of carriers) put(ch);
+  for (const ch of staff) put(ch);
+  for (const c of customers) put(c.ch);
+  for (const g of guests) put(g.ch);
+  blobs.count = n;
+  blobs.instanceMatrix.needsUpdate = true;
+}
+function draw() {
+  if (!blobs.visible || !renderer.shadowMap.needsUpdate) { renderer.render(scene, camera); return; }
+  const off = [];
+  root.traverse((o) => { if (o.castShadow && !o.userData.still) { o.castShadow = false; off.push(o); } });
+  renderer.render(scene, camera);
+  for (const o of off) o.castShadow = true;
+}
 function applyQuality() {
   const q = QUALITY[qLevel];
   renderer.setPixelRatio(Math.min(devicePixelRatio, q.dpr));
@@ -1524,10 +1579,11 @@ function applyQuality() {
     sun.shadow.mapSize.set(q.shadow, q.shadow);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   }
-  renderer.shadowMap.autoUpdate = q.every === 1;
+  blobs.visible = !!q.still;
+  renderer.shadowMap.autoUpdate = !q.still;
   renderer.shadowMap.needsUpdate = true;
 }
-const fps = { t: 0, n: 0, wait: 2 };
+const fps = { t: 0, n: 0, wait: 2, probe: 0, floor: false };
 function watchFps(raw) {
   if (params.has('q')) return;
   if (document.hidden || paused || introT < INTRO) { fps.t = 0; fps.n = 0; return; }
@@ -1538,16 +1594,18 @@ function watchFps(raw) {
   if (fps.t < 2.5 && !(fps.t > 1 && fps.n / fps.t < 25)) return;
   const f = fps.n / fps.t;
   fps.t = 0; fps.n = 0;
-  if (f < 48 && qLevel < QUALITY.length - 1) {
+  if (fps.probe) {
+    if (f < fps.probe * 1.06) { qLevel--; fps.floor = true; applyQuality(); try { localStorage.setItem(QKEY, String(qLevel)); } catch (e) {  } }
+    fps.probe = 0;
+    return;
+  }
+  if (f < 48 && qLevel < QUALITY.length - 1 && !fps.floor) {
     qLevel++;
+    if (qLevel === QUALITY.length - 1) fps.probe = f;
     applyQuality();
     fps.wait = 1.5;
     try { localStorage.setItem(QKEY, String(qLevel)); } catch (e) {  }
   }
-}
-function shadowTick() {
-  const every = QUALITY[qLevel].every;
-  if (every > 1 && ++shadowFrame % every === 0) renderer.shadowMap.needsUpdate = true;
 }
 
 function resize() {
@@ -1576,10 +1634,10 @@ let time = 0;
 function frame() {
   const raw = clock.getDelta();
   watchFps(raw);
-  shadowTick();
+  if (shadowsAt && performance.now() >= shadowsAt) { shadowsAt = 0; renderer.shadowMap.needsUpdate = true; }
 
   let dt = Math.min(raw * timeScale, timeScale === 1 ? 0.066 : Math.min(0.35, 0.025 * timeScale));
-  if (paused || hostPaused) { hud.tick(time); renderer.render(scene, camera); requestAnimationFrame(frame); return; }
+  if (paused || hostPaused) { hud.tick(time); draw(); requestAnimationFrame(frame); return; }
   time += dt;
 
   handleInput();
@@ -1631,11 +1689,12 @@ function frame() {
 
   if (!window.bt || !window.bt.freeCam) updateCamera(dt);
   hud.tick(time);
-  if (!noRender) renderer.render(scene, camera);
+  updateBlobs();
+  if (!noRender) draw();
   requestAnimationFrame(frame);
 }
 
-renderer.render(scene, camera);
+draw();
 document.getElementById('loading')?.classList.add('done');
 CG.loadingStop();
 CG.gameplayStart();
