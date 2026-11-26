@@ -90,7 +90,17 @@ await loadAssets(audioCtx, (k) => { if (loadingEl) loadingEl.style.setProperty('
 
 
 
-const earlySave = (() => { try { return JSON.parse(CG.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } })();
+const RESTART_KEY = 'baguette-tycoon-restart';
+const earlySave = (() => {
+  let data = null;
+  try { data = JSON.parse(CG.getItem(SAVE_KEY) || 'null'); } catch (e) { data = null; }
+  try {
+    const next = JSON.parse(sessionStorage.getItem(RESTART_KEY) || 'null');
+    if (next && (!data || (data.prestige | 0) < (next.prestige | 0))) { data = next; CG.setItem(SAVE_KEY, JSON.stringify(next)); }
+    else if (next) sessionStorage.removeItem(RESTART_KEY);
+  } catch (e) {  }
+  return data;
+})();
 const earlyParams = new URLSearchParams(location.search);
 const PRESTIGE0 = earlyParams.has('debug') ? (+earlyParams.get('bakery') || 0) : ((earlySave && earlySave.prestige) | 0);
 
@@ -479,8 +489,11 @@ function offerNewBakery() {
 
 
 function newBakery() {
-  if (params.has('debug')) return;
-  CG.setItem(SAVE_KEY, JSON.stringify({ money: 0, unlockIndex: 0, padPaid: 0, sound: audio.on, lang: savedLang, up: { oven: 0, price: 0, carry: 0, speed: 0 }, last: 0, xp, level, stats, missions: [], skins, skin, prestige: prestige + 1, music: audio.musicOn }));
+  if (params.has('debug') || restarting) return;
+  const next = JSON.stringify({ money: 0, unlockIndex: 0, padPaid: 0, sound: audio.on, lang: savedLang, up: { oven: 0, price: 0, carry: 0, speed: 0 }, last: 0, xp, level, stats, missions: [], skins, skin, prestige: prestige + 1, music: audio.musicOn });
+  restarting = true;
+  try { sessionStorage.setItem(RESTART_KEY, next); } catch (e) {  }
+  CG.setItem(SAVE_KEY, next);
   location.reload();
 }
 
@@ -720,8 +733,9 @@ function updateConfetti(dt) {
 }
 
 
+let restarting = false;
 function save() {
-  if (params.has('debug')) return;
+  if (params.has('debug') || restarting) return;
   CG.setItem(SAVE_KEY, JSON.stringify({ money, unlockIndex, padPaid: pad ? pad.paid : 0, sound: audio.on, lang: savedLang, up, last: Date.now(), xp, level, stats, missions, skins, skin, prestige, music: audio.musicOn }));
 }
 const params = new URLSearchParams(location.search);
@@ -736,8 +750,7 @@ function load() {
     applyStats();
     return;
   }
-  let data = null;
-  try { data = JSON.parse(CG.getItem(SAVE_KEY) || 'null'); } catch (e) { data = null; }
+  const data = earlySave;
   if (!data) return;
   if (data.sound === false) audio.setUser(false);
   if (data.lang) savedLang = data.lang;
@@ -1633,7 +1646,7 @@ requestAnimationFrame(frame);
 
 
 window.bt = {
-  unlock(n) { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 500, unlockIndex: n, padPaid: 0 })); location.reload(); },
+  unlock(n) { restarting = true; localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 500, unlockIndex: n, padPaid: 0 })); location.reload(); },
   player, input, scene, renderer, THREE, sun, camera, freeCam: false, nature, worldRoot: root, hud,
   state() { return { q: qLevel, dpr: renderer.getPixelRatio(), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, paused, time: time.toFixed(1), customers: customers.length, queues: counters.map((c) => c.queue.length), pos: customers.slice(0, 3).map((c) => [c.ch.pos.x.toFixed(1), c.ch.pos.z.toFixed(1), c.ch.root.visible]) }; },
   money(v) { if (v === undefined) return money; money += v; },
@@ -1641,5 +1654,5 @@ window.bt = {
   outfits: OUTFITS, setSkin,
   game: () => ({ trashes, ovens, machines, tables, counters, pad, unlockIndex, unlocks: unlocks.length, up, helpers, time, boostTime, paused, stats, sellable: sellable(), guests: guests.length }),
   buyUpgrade, upgradeList, offerBoost, startBoost, needed, demands, sourceOf, sources,
-  reset() { CG.removeItem(SAVE_KEY); location.reload(); },
+  reset() { restarting = true; CG.removeItem(SAVE_KEY); location.reload(); },
 };
