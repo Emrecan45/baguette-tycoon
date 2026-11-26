@@ -1156,7 +1156,7 @@ function updateTables(dt) {
     } else if (tb.state === 'dirty') {
 
       const cleaner = tb.zone.contains(player.pos) || helpers.some((h) => h.role === 'cleaner' && tb.zone.contains(h.ch.pos));
-      if (!cleaner) continue;
+      if (!cleaner && tb.clean === 0) continue;
       if (tb.clean === 0) sfx.clean();
       tb.clean += dt;
       tb.dirt.scale.setScalar(Math.max(0.01, 1 - tb.clean / CLEAN_T));
