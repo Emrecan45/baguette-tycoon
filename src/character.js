@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { group } from './art.js';
-import { character } from './assets.js';
+import { character, characterSource } from './assets.js';
 import { inFlight } from './juice.js';
 import { buildAccessories, stripedMaterial } from './outfits.js';
 import { World } from './world.js';
+import { LitMaterial } from './lit.js';
 
 
 export class ItemStack {
@@ -68,7 +69,7 @@ export class ItemStack {
 
   update(dt, time) {
     if (this.layout !== 'carry') return;
-    const p = new THREE.Vector3();
+    const p = _p;
     const k2 = 1 - Math.exp(-25 * dt);
     for (let i = 0; i < this.items.length; i++) {
       const it = this.items[i];
@@ -84,6 +85,7 @@ export class ItemStack {
 
 
 const D = Math.PI / 180;
+const _p = new THREE.Vector3();
 
 export const CHAR_SCALE = 0.8;
 const SIT_DROP = -0.12;
@@ -95,10 +97,97 @@ function tinted(base, color) {
   return m;
 }
 
+
+const PARTS = ['Skin', 'Shirt', 'Pants', 'Shoes'];
+const HAT_MESHES = { toque: 'Hat_Toque', cap: 'Hat_Cap', hair: 'Hat_Hair' };
+let merged;
+
+function mergeParts(pieces) {
+  let nv = 0, ni = 0;
+  for (const p of pieces) {
+    nv += p.geo.attributes.position.count;
+    ni += p.geo.index ? p.geo.index.count : p.geo.attributes.position.count;
+  }
+  const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), part = new Float32Array(nv);
+  const si = new Uint16Array(nv * 4), sw = new Float32Array(nv * 4);
+  const idx = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  const v = new THREE.Vector3(), nm = new THREE.Matrix3();
+  let o = 0, oi = 0;
+  for (const p of pieces) {
+    const g = p.geo, P = g.attributes.position, N = g.attributes.normal, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight;
+    nm.getNormalMatrix(p.m);
+    for (let i = 0; i < P.count; i++) {
+      v.fromBufferAttribute(P, i).applyMatrix4(p.m).toArray(pos, (o + i) * 3);
+      if (N) v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize().toArray(nor, (o + i) * 3);
+      if (p.bone !== undefined) { si[(o + i) * 4] = p.bone; sw[(o + i) * 4] = 1; } else {
+        for (let k = 0; k < 4; k++) { si[(o + i) * 4 + k] = SI.getComponent(i, k); sw[(o + i) * 4 + k] = SW.getComponent(i, k); }
+      }
+      part[o + i] = p.part;
+    }
+    const n = g.index ? g.index.count : P.count;
+    for (let i = 0; i < n; i++) idx[oi + i] = (g.index ? g.index.getX(i) : i) + o;
+    oi += n;
+    o += P.count;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+  geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+  geo.setAttribute('part', new THREE.BufferAttribute(part, 1));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  return geo;
+}
+
+function mergedBody() {
+  if (merged !== undefined) return merged;
+  merged = null;
+  const src = characterSource('hero');
+  src.updateMatrixWorld(true);
+  const meshes = [];
+  src.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  const body = PARTS.map((n) => meshes.find((o) => o.isSkinnedMesh && o.material.name === n));
+  if (body.some((o) => !o || !o.geometry.attributes.normal)) return null;
+  const bones = body[0].skeleton.bones;
+  if (body.some((o) => o.skeleton.bones.length !== bones.length || o.skeleton.bones.some((b, i) => b !== bones[i]))) return null;
+  const inv = body[0].bindMatrix.clone().invert();
+  const pieces = body.map((o, i) => ({ geo: o.geometry, m: inv.clone().multiply(o.bindMatrix), part: i }));
+  const geos = { none: mergeParts(pieces) };
+  const colors = { Skin: body[0].material.color.clone() };
+  for (const [hat, name] of Object.entries(HAT_MESHES)) {
+    const h = meshes.find((o) => o.name === name);
+    const bi = h ? bones.indexOf(h.parent) : -1;
+    if (bi < 0 || !h.geometry.attributes.normal) continue;
+    const m = inv.clone().multiply(body[0].skeleton.boneInverses[bi].clone().invert()).multiply(h.matrix);
+    geos[hat] = mergeParts([...pieces, { geo: h.geometry, m, part: 4, bone: bi }]);
+    colors[hat] = h.material.color.clone();
+  }
+  const box = new THREE.Box3().setFromBufferAttribute(geos.none.attributes.position);
+  const sphere = new THREE.Sphere(box.getCenter(new THREE.Vector3()), box.getSize(new THREE.Vector3()).length() * 0.65);
+  merged = { geos, colors, sphere };
+  return merged;
+}
+
+function paletteMaterial() {
+  const m = new LitMaterial({ side: THREE.DoubleSide });
+  const pal = { value: [0, 1, 2, 3, 4].map(() => new THREE.Color()) };
+  m.userData.pal = pal.value;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uPal = pal;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float part;\nuniform vec3 uPal[5];\nvarying vec3 vPal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPal = uPal[int(part + 0.5)];');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vPal;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= vPal;');
+  };
+  m.customProgramCacheKey = () => 'palette5';
+  return m;
+}
+
 export class Character {
 
-  constructor(parent, pos, look) {
+  constructor(parent, pos, look, merged = false) {
     this.root = group(parent, pos, [0, 0, 0], 'Perso');
+    this.merged = merged;
     this.speed = 5;
     this.accel = 30;
     this.collide = true;
@@ -119,6 +208,16 @@ export class Character {
 
 
   setLook(L) {
+    if (this.body) {
+      const M = mergedBody(), pal = this.body.material.userData.pal;
+      pal[0].set(L.skin || M.colors.Skin);
+      pal[1].set(L.shirt || '#3D7DDB');
+      pal[2].set(L.pants || '#2F3B55');
+      pal[3].set(L.shoes || '#2B2B2B');
+      pal[4].set(L.hat === 'toque' ? M.colors.toque : L.hatColor || (L.hat === 'cap' ? '#E53935' : '#4E342E'));
+      this.body.geometry = M.geos[L.hat] || M.geos.none;
+      return;
+    }
     const colors = { Shirt: L.shirt || '#3D7DDB', Pants: L.pants || '#2F3B55', Shoes: L.shoes || '#2B2B2B', Cap: L.hatColor || '#E53935', Hair: L.hatColor || '#4E342E' };
     if (L.skin) colors.Skin = L.skin;
     const hatName = { toque: 'Hat_Toque', cap: 'Hat_Cap', hair: 'Hat_Hair' }[L.hat] || null;
@@ -174,11 +273,39 @@ export class Character {
       this.bones[n] = { b, q0: b.quaternion.clone(), P: modelQuat(b.parent), Pi: modelQuat(b.parent).invert(), p0: b.position.clone() };
     }
 
+    if (this.merged && mergedBody()) this.mergeBody();
+
     this.stackAnchor = group(this.root, [0, 0.8 * this.scale, 0.42 * this.scale], [0, 0, 0], 'Stack');
     this.carry = new ItemStack(this.stackAnchor, 'carry', 6);
     this.setLook(L);
   }
 
+
+  mergeBody() {
+    const src = [...this.origMats.keys()].find((o) => o.isSkinnedMesh && o.material.name === 'Skin');
+    const body = this.body = new THREE.SkinnedMesh(mergedBody().geos.none, paletteMaterial());
+    body.name = 'Body';
+    body.position.copy(src.position);
+    body.quaternion.copy(src.quaternion);
+    body.scale.copy(src.scale);
+    src.parent.add(body);
+    body.bind(src.skeleton, src.bindMatrix);
+    body.boundingSphere = mergedBody().sphere;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    for (const o of this.origMats.keys()) o.removeFromParent();
+    this.origMats.clear();
+  }
+
+  dispose() {
+    this.root.removeFromParent();
+    if (this.body) {
+      this.body.material.dispose();
+      this.body.skeleton.dispose();
+    } else {
+      for (const o of this.origMats.keys()) if (o.isSkinnedMesh) o.skeleton.dispose();
+    }
+  }
 
   pose(name, x, y = 0, z = 0) {
     const B = this.bones[name];
@@ -189,7 +316,7 @@ export class Character {
   }
 
   update(dt, time) {
-    const d = this.desired.clone();
+    const d = _d.copy(this.desired);
     if (d.length() > 1) d.normalize();
     d.multiplyScalar(this.speed);
     const diff = d.sub(this.vel);
@@ -276,3 +403,4 @@ export class Character {
 }
 const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
+const _d = new THREE.Vector3();

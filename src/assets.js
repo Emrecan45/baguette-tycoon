@@ -113,3 +113,5 @@ export function character(name) {
   const g = gltfs[name];
   return { scene: cloneSkinned(g.scene), animations: g.animations };
 }
+
+export function characterSource(name) { return gltfs[name].scene; }

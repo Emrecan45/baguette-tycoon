@@ -239,7 +239,7 @@ const ROLE_LOOK = {
 };
 function addHelper(x, z, instant, role = 'mitron') {
   x = at(x); z = at(z);
-  const ch = new Character(root, [x, 0, z], ROLE_LOOK[role](helpers.filter((h) => h.role === role).length));
+  const ch = new Character(root, [x, 0, z], ROLE_LOOK[role](helpers.filter((h) => h.role === role).length), true);
   const rec = { ch, role, phase: 'fetch', want: null, idle: 0, stuck: 0 };
   ch.helper = rec;
   helpers.push(rec);
@@ -250,7 +250,7 @@ function addHelper(x, z, instant, role = 'mitron') {
 function addCashier(ci) {
   const c = counters[ci];
   if (!c) return;
-  const ch = new Character(root, [c.register.cx, 0, c.register.cz + 0.1], { shirt: '#E91E63', pants: '#3B3B4F', hat: 'hair', hatColor: pick(HAT_COLORS.hair), scale: 0.95 });
+  const ch = new Character(root, [c.register.cx, 0, c.register.cz + 0.1], { shirt: '#E91E63', pants: '#3B3B4F', hat: 'hair', hatColor: pick(HAT_COLORS.hair), scale: 0.95 }, true);
   ch.collide = false;
   ch.root.rotation.y = Math.PI;
   c.cashier = ch;
@@ -894,7 +894,7 @@ class Customer {
     const look = { shirt: pick(SHIRTS), pants: pick(PANTS), hat, hatColor: hat ? pick(HAT_COLORS[hat]) : null, scale: 0.9 + Math.random() * 0.12 };
 
     const lineX = counter.slotPos(0).x;
-    this.ch = new Character(root, [lineX + (Math.random() - 0.5) * 0.3, 0, -13.5 - Math.random() * 2], look);
+    this.ch = new Character(root, [lineX + (Math.random() - 0.5) * 0.3, 0, -13.5 - Math.random() * 2], look, true);
     this.ch.collide = false;
     this.ch.speed = 2.6 + Math.random() * 0.8;
     counter.queue.push(this);
@@ -910,7 +910,7 @@ class Customer {
   }
   update(dt) {
     if (this.leaving) {
-      if (!this.exitPath.length) { this.ch.root.removeFromParent(); return false; }
+      if (!this.exitPath.length) { this.ch.dispose(); return false; }
       if (this.moveTo(this.exitPath[0], 0.25)) this.exitPath.shift();
       return true;
     }
@@ -1011,7 +1011,7 @@ class TableGuest {
     this.tb = null;
     const hat = pick(HATS);
     const look = { shirt: pick(SHIRTS), pants: pick(PANTS), hat, hatColor: hat ? pick(HAT_COLORS[hat]) : null, scale: 0.9 + Math.random() * 0.12 };
-    this.ch = new Character(root, [TQ_X + (Math.random() - 0.5) * 0.3, 0, at(-7.5) - Math.random()], look);
+    this.ch = new Character(root, [TQ_X + (Math.random() - 0.5) * 0.3, 0, at(-7.5) - Math.random()], look, true);
     this.ch.collide = false;
     this.ch.speed = 3.2 + Math.random() * 0.6;
     this.path = [];
@@ -1047,7 +1047,7 @@ class TableGuest {
     }
     if (this.state === 'walk' || this.state === 'leave') {
       if (!this.path.length) {
-        if (this.state === 'leave') { ch.root.removeFromParent(); return false; }
+        if (this.state === 'leave') { ch.dispose(); return false; }
         this.sitDown();
       } else {
         const tg = this.path[0];
