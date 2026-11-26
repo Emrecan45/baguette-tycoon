@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { propMeshes } from './assets.js';
-import { LitMaterial } from './lit.js';
+import { LitMaterial, bakeColors, vertexColorMaterial } from './lit.js';
 
 export const Pal = {
   floorA: '#F6E7C8', floorB: '#EDD3A6', grout: '#D8B98A',
@@ -22,7 +22,7 @@ export const Pal = {
   hair: ['#4E342E', '#212121', '#F9A825', '#BF360C', '#6D4C41'],
 };
 
-export const mat = new LitMaterial({ vertexColors: true, roughness: 0.78, metalness: 0 });
+export const mat = vertexColorMaterial;
 
 export const charMat = new LitMaterial({ vertexColors: true, roughness: 0.5, metalness: 0 });
 
@@ -124,10 +124,12 @@ export function bake(root, castShadow = true, material = mat, directOnly = false
   return m;
 }
 
+const baked = new Map();
 function fromProp(name, scale) {
   const g = new THREE.Group();
   const sm = new THREE.Matrix4().makeScale(scale, scale, scale);
-  for (const m of propMeshes(name)) {
+  if (!baked.has(name)) baked.set(name, bakeColors(propMeshes(name)));
+  for (const m of baked.get(name)) {
     const c = new THREE.Mesh(m.geometry, m.material);
     c.castShadow = true;
     c.receiveShadow = true;

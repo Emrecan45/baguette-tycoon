@@ -6,7 +6,7 @@
 
 Make dough, bake fresh bread, serve customers and turn a small shop into a bakery with its own bakehouse and cafe terrace.
 
-![Version](https://img.shields.io/badge/version-1.0.0-orange)
+![Version](https://img.shields.io/badge/version-1.0.1-orange)
 ![Three.js](https://img.shields.io/badge/Three.js-3D-049EF4)
 ![Vite](https://img.shields.io/badge/Vite-build-646CFF)
 ![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-red)

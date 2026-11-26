@@ -90,9 +90,25 @@ await loadAssets(audioCtx, (k) => { if (loadingEl) loadingEl.style.setProperty('
 
 
 
-const earlySave = (() => { try { return JSON.parse(CG.getItem(SAVE_KEY) || 'null'); } catch (e) { return null; } })();
+const RESTART_KEY = 'baguette-tycoon-restart';
+const earlySave = (() => {
+  let data = null;
+  try { data = JSON.parse(CG.getItem(SAVE_KEY) || 'null'); } catch (e) { data = null; }
+  try {
+    const next = JSON.parse(sessionStorage.getItem(RESTART_KEY) || 'null');
+    if (next && (!data || (data.prestige | 0) < (next.prestige | 0))) { data = next; CG.setItem(SAVE_KEY, JSON.stringify(next)); }
+    else if (next) sessionStorage.removeItem(RESTART_KEY);
+  } catch (e) {  }
+  return data;
+})();
 const earlyParams = new URLSearchParams(location.search);
 const PRESTIGE0 = earlyParams.has('debug') ? (+earlyParams.get('bakery') || 0) : ((earlySave && earlySave.prestige) | 0);
+
+let shadowsAt = 0;
+function still(o) {
+  o.traverse((m) => { if (m.isMesh && m.castShadow) m.userData.still = true; });
+  shadowsAt = performance.now() + 600;
+}
 
 World.ext = 0;
 World.build(root);
@@ -111,6 +127,7 @@ counters.push(new Counter(root, at(-2.2), at(-1.0), at(-2.2) + 2.1, at(-1.0) - 0
 addMachine('petrin', -5.45, 1.7, -90, true);
 
 const trashes = [new TrashBin(root, at(-4.85), at(-0.5), at(-5.55), at(-0.5))];
+still(root);
 
 const SHIRTS = ['#E53935', '#43A047', '#8E24AA', '#FB8C00', '#1E88E5', '#00ACC1', '#F06292', '#FDD835', '#6D4C41', '#5C6BC0'];
 const PANTS = ['#2F3B55', '#3E2723', '#263238', '#37474F', '#1A237E', '#4E342E', '#455A64'];
@@ -157,8 +174,8 @@ const unlocks = [
 
   { title: 'oven', price: P(15), x: 0.6, z: 3.65, ghost: ovenGhost(0.6), apply: (i) => addOven(0.6, 6.0, i) },
   { title: 'counter', price: P(100), x: 2.6, z: 0.3, ghost: [['counter', at(2.6), at(-1.0)]], apply: (i) => addCounter(2.6, i) },
-  { title: 'oven', price: P(200), x: 4.0, z: 3.65, ghost: ovenGhost(4.0), apply: (i) => addOven(4.0, 6.0, i) },
-  { title: 'helper', price: P(320), x: 4.9, z: 2.6, apply: (i) => addHelper(4.9, 2.6, i, 'mitron') },
+  { title: 'helper', price: P(200), x: 4.9, z: 2.6, apply: (i) => addHelper(4.9, 2.6, i, 'mitron') },
+  { title: 'oven', price: P(320), x: 4.0, z: 3.65, ghost: ovenGhost(4.0), apply: (i) => addOven(4.0, 6.0, i) },
   { title: 'basket', price: P(450), x: 4.9, z: 2.6, apply: (i) => biggerBasket(i) },
 
   { title: 'fournil', price: P(650), x: -1.8, z: 5.3, apply: (i) => openArea('fournil', i) },
@@ -192,18 +209,22 @@ function addMachine(type, x, z, rot, instant) {
   const m = new Machine(root, root, type, x, z, rot);
   m.onMake = () => sfx.oven();
   machines.push(m);
+  still(m.root);
   if (!instant) { pop(m.root, 1, 0.5); confetti(x, 2.0, z); if (m.input) firstHint(m); }
 }
 function addTable(x, z, instant) {
   x = at(x); z = at(z);
   const tb = new CafeTable(root, x, z, ['#E2463B', '#2E6FB7', '#2E8B57'][tables.length % 3]);
   tables.push(tb);
+  still(tb.root);
   if (!instant) { pop(tb.root, 1, 0.5); confetti(x, 1.6, z); if (tables.length === 1) hint = { type: 'table' }; }
 }
 function openArea(name, instant) {
   World.openArea(name, instant);
   if (name === 'fournil') trashes.push(new TrashBin(root, at(-4.65), at(9.3), at(-5.45), at(9.3)));
   if (name === 'terrace') trashes.push(new TrashBin(root, at(7.0), at(-2.4), at(7.0), at(-3.1)));
+  still(trashes[trashes.length - 1].root);
+  shadowsAt += 300;
   if (!instant) { sfx.door(); }
   if (!instant) { confetti(World.DOORS[name].cx, 2.4, World.DOORS[name].cz); }
 }
@@ -213,12 +234,14 @@ function addOven(x, z, instant, kind = 'baguette') {
   const o = new Oven(root, root, x, z, kind);
   o.onBake = () => sfx.oven();
   ovens.push(o);
+  still(o.root);
   if (!instant) { pop(o.root, 1, 0.5); confetti(x, 2.2, z); }
 }
 function addCounter(x, instant) {
   x = at(x);
   const c = new Counter(root, x, at(-1.0), x + 2.25, at(-1.0) - 0.05, 1);
   counters.push(c);
+  still(c.root);
   addCashier(counters.length - 1, true);
   if (!instant) { pop(c.root, 1, 0.5); pop(c.cashier.root, 1, 0.5); confetti(x, 1.6, -1); }
 }
@@ -229,7 +252,7 @@ const ROLE_LOOK = {
 };
 function addHelper(x, z, instant, role = 'mitron') {
   x = at(x); z = at(z);
-  const ch = new Character(root, [x, 0, z], ROLE_LOOK[role](helpers.filter((h) => h.role === role).length));
+  const ch = new Character(root, [x, 0, z], ROLE_LOOK[role](helpers.filter((h) => h.role === role).length), true);
   const rec = { ch, role, phase: 'fetch', want: null, idle: 0, stuck: 0 };
   ch.helper = rec;
   helpers.push(rec);
@@ -240,7 +263,7 @@ function addHelper(x, z, instant, role = 'mitron') {
 function addCashier(ci) {
   const c = counters[ci];
   if (!c) return;
-  const ch = new Character(root, [c.register.cx, 0, c.register.cz + 0.1], { shirt: '#E91E63', pants: '#3B3B4F', hat: 'hair', hatColor: pick(HAT_COLORS.hair), scale: 0.95 });
+  const ch = new Character(root, [c.register.cx, 0, c.register.cz + 0.1], { shirt: '#E91E63', pants: '#3B3B4F', hat: 'hair', hatColor: pick(HAT_COLORS.hair), scale: 0.95 }, true);
   ch.collide = false;
   ch.root.rotation.y = Math.PI;
   c.cashier = ch;
@@ -479,8 +502,11 @@ function offerNewBakery() {
 
 
 function newBakery() {
-  if (params.has('debug')) return;
-  CG.setItem(SAVE_KEY, JSON.stringify({ money: 0, unlockIndex: 0, padPaid: 0, sound: audio.on, lang: savedLang, up: { oven: 0, price: 0, carry: 0, speed: 0 }, last: 0, xp, level, stats, missions: [], skins, skin, prestige: prestige + 1, music: audio.musicOn }));
+  if (params.has('debug') || restarting) return;
+  const next = JSON.stringify({ money: 0, unlockIndex: 0, padPaid: 0, sound: audio.on, lang: savedLang, up: { oven: 0, price: 0, carry: 0, speed: 0 }, last: 0, xp, level, stats, missions: [], skins, skin, prestige: prestige + 1, music: audio.musicOn });
+  restarting = true;
+  try { sessionStorage.setItem(RESTART_KEY, next); } catch (e) {  }
+  CG.setItem(SAVE_KEY, next);
   location.reload();
 }
 
@@ -720,8 +746,9 @@ function updateConfetti(dt) {
 }
 
 
+let restarting = false;
 function save() {
-  if (params.has('debug')) return;
+  if (params.has('debug') || restarting) return;
   CG.setItem(SAVE_KEY, JSON.stringify({ money, unlockIndex, padPaid: pad ? pad.paid : 0, sound: audio.on, lang: savedLang, up, last: Date.now(), xp, level, stats, missions, skins, skin, prestige, music: audio.musicOn }));
 }
 const params = new URLSearchParams(location.search);
@@ -736,8 +763,7 @@ function load() {
     applyStats();
     return;
   }
-  let data = null;
-  try { data = JSON.parse(CG.getItem(SAVE_KEY) || 'null'); } catch (e) { data = null; }
+  const data = earlySave;
   if (!data) return;
   if (data.sound === false) audio.setUser(false);
   if (data.lang) savedLang = data.lang;
@@ -759,6 +785,7 @@ function load() {
   applyStats();
   if (World.AREAS.terrace.open && !trashes.some((t) => t.root.position.x > at(6.0))) {
     trashes.push(new TrashBin(root, at(7.0), at(-2.4), at(7.0), at(-3.1)));
+    still(trashes[trashes.length - 1].root);
   }
 }
 addEventListener('visibilitychange', () => { if (document.hidden) save(); });
@@ -813,6 +840,15 @@ function room(kind) {
 const useful = (kind, carry) => carry.items.reduce((a, it) => a + (it.userData.kind === kind ? 1 : 0), 0) < room(kind);
 function handleCarrier(ch, dt) {
   const p = ch.pos, carry = ch.carry, h = ch.helper;
+
+  if (h && h.role === 'waiter' && h.want && !carry.full) for (const c of counters) {
+    const st = c.stockFor(h.want);
+    if (!st || st.empty || !c.drop.contains(p)) continue;
+    if (!transferReady(ch, dt)) return;
+    const t = st.take();
+    if (t) carry.addFlying(t.item, 1, 0.22, 0.8, fly, punch);
+    return;
+  }
 
   for (const o of sources()) {
     if (!o.pickup.contains(p) || carry.full || o.tray.empty) continue;
@@ -881,7 +917,7 @@ class Customer {
     const look = { shirt: pick(SHIRTS), pants: pick(PANTS), hat, hatColor: hat ? pick(HAT_COLORS[hat]) : null, scale: 0.9 + Math.random() * 0.12 };
 
     const lineX = counter.slotPos(0).x;
-    this.ch = new Character(root, [lineX + (Math.random() - 0.5) * 0.3, 0, -13.5 - Math.random() * 2], look);
+    this.ch = new Character(root, [lineX + (Math.random() - 0.5) * 0.3, 0, -13.5 - Math.random() * 2], look, true);
     this.ch.collide = false;
     this.ch.speed = 2.6 + Math.random() * 0.8;
     counter.queue.push(this);
@@ -897,7 +933,7 @@ class Customer {
   }
   update(dt) {
     if (this.leaving) {
-      if (!this.exitPath.length) { this.ch.root.removeFromParent(); return false; }
+      if (!this.exitPath.length) { this.ch.dispose(); return false; }
       if (this.moveTo(this.exitPath[0], 0.25)) this.exitPath.shift();
       return true;
     }
@@ -998,7 +1034,7 @@ class TableGuest {
     this.tb = null;
     const hat = pick(HATS);
     const look = { shirt: pick(SHIRTS), pants: pick(PANTS), hat, hatColor: hat ? pick(HAT_COLORS[hat]) : null, scale: 0.9 + Math.random() * 0.12 };
-    this.ch = new Character(root, [TQ_X + (Math.random() - 0.5) * 0.3, 0, at(-7.5) - Math.random()], look);
+    this.ch = new Character(root, [TQ_X + (Math.random() - 0.5) * 0.3, 0, at(-7.5) - Math.random()], look, true);
     this.ch.collide = false;
     this.ch.speed = 3.2 + Math.random() * 0.6;
     this.path = [];
@@ -1034,7 +1070,7 @@ class TableGuest {
     }
     if (this.state === 'walk' || this.state === 'leave') {
       if (!this.path.length) {
-        if (this.state === 'leave') { ch.root.removeFromParent(); return false; }
+        if (this.state === 'leave') { ch.dispose(); return false; }
         this.sitDown();
       } else {
         const tg = this.path[0];
@@ -1129,7 +1165,7 @@ function updateTables(dt) {
     } else if (tb.state === 'dirty') {
 
       const cleaner = tb.zone.contains(player.pos) || helpers.some((h) => h.role === 'cleaner' && tb.zone.contains(h.ch.pos));
-      if (!cleaner) continue;
+      if (!cleaner && tb.clean === 0) continue;
       if (tb.clean === 0) sfx.clean();
       tb.clean += dt;
       tb.dirt.scale.setScalar(Math.max(0.01, 1 - tb.clean / CLEAN_T));
@@ -1234,23 +1270,44 @@ function demands(role) {
       const st = c.stockFor(k), free = st.capacity - st.count;
       if (free > 0) list.push({ kind: k, zone: c.drop, amount: free, prio: (needed(k) ? 4 : 1) + (st.count < 3 ? 1 : 0) });
     }
-  } else if (role === 'waiter') {
+  }
+  return list;
+}
 
-    const total = {};
-    for (const tb of tables) if (tb.state === 'wait') for (const o of tb.order) if (o.got < o.n) total[o.kind] = (total[o.kind] || 0) + o.n - o.got;
-    for (const tb of tables) if (tb.state === 'wait') for (const o of tb.order) if (o.got < o.n) list.push({ kind: o.kind, zone: tb.zone, amount: total[o.kind], prio: 3 + (o.kind === 'cafe' ? 0 : 0.5) });
-
-    for (const kind of Object.keys(total)) {
-      if (sources().some((o) => o.kind === kind && !o.tray.empty)) continue;
+function serve(h) {
+  const { ch } = h, carry = ch.carry;
+  const need = {};
+  for (const tb of tables) if (tb.state === 'wait') for (const o of tb.order) if (o.got < o.n) need[o.kind] = (need[o.kind] || 0) + o.n - o.got;
+  for (const it of carry.items) if (need[it.userData.kind]) need[it.userData.kind]--;
+  const has = (k) => carry.items.reduce((a, it) => a + (it.userData.kind === k ? 1 : 0), 0);
+  const far = (z) => Math.hypot(z.cx - ch.pos.x, z.cz - ch.pos.z);
+  const serving = carry.items.some((it) => tables.some((tb) => tb.state === 'wait' && tb.missing(it.userData.kind) > 0));
+  if (!carry.full) {
+    let best = null;
+    for (const kind of Object.keys(need)) {
+      if (need[kind] <= 0) continue;
+      const src = sourceOf(kind, ch.pos);
+      if (src && (!best || far(src.pickup) < far(best.zone))) best = { kind, zone: src.pickup };
+      for (const c of counters) if (c.stockFor(kind)?.count && (!best || far(c.drop) < far(best.zone))) best = { kind, zone: c.drop };
+    }
+    if (best && (carry.empty || far(best.zone) < at(3))) { h.want = best.kind; steer(ch, best.zone.center); return; }
+    if (!best && !serving) {
       for (const m of machines) {
-        if (m.kind !== kind || !m.input || m.inputNeed <= 0) continue;
-        const coming = m.inStack.count * m.yield + m.charge;
-        if (coming >= total[kind]) continue;
-        list.push({ kind: m.input, zone: m.drop, amount: Math.min(m.inputNeed, Math.ceil((total[kind] - coming) / m.yield)), prio: 2.5 });
+        if (!m.input || !need[m.kind] || m.inStack.count * m.yield + m.charge >= need[m.kind]) continue;
+        if (has(m.input) >= Math.min(m.inputNeed, Math.ceil(need[m.kind] / m.yield))) continue;
+        const src = sourceOf(m.input, ch.pos);
+        if (src) { h.want = m.input; steer(ch, src.pickup.center); return; }
       }
     }
   }
-  return list;
+  h.want = null;
+  let goal = null;
+  for (const tb of tables) {
+    if (tb.state !== 'wait' || !carry.items.some((it) => tb.missing(it.userData.kind) > 0)) continue;
+    if (!goal || far(tb.zone) < far(goal)) goal = tb.zone;
+  }
+  if (!goal) goal = machines.find((m) => m.input && has(m.input) && m.inputNeed > 0)?.drop;
+  steer(ch, goal ? goal.center : HOME.waiter);
 }
 const sourceOf = (kind, from) => {
   let best = null, bd = Infinity;
@@ -1289,6 +1346,7 @@ function updateHelpers(dt) {
       steer(ch, best ? best.zone.center : HOME.cleaner);
       continue;
     }
+    if (h.role === 'waiter') { serve(h); continue; }
     if (h.phase === 'fetch') {
       if (!ch.carry.empty && (ch.carry.full || !h.want)) { h.phase = 'deliver'; continue; }
       if (!h.want) {
@@ -1489,15 +1547,56 @@ function updateDust(dt) {
 
 const QKEY = 'baguette-tycoon-quality';
 const QUALITY = [
-  { dpr: 1.5, shadow: 2048, soft: true, every: 1 },
-  { dpr: 1.25, shadow: 2048, soft: true, every: 1 },
-  { dpr: 1, shadow: 1024, soft: false, every: 1 },
-  { dpr: 0.85, shadow: 1024, soft: false, every: 2 },
-  { dpr: 0.7, shadow: 512, soft: false, every: 3 },
+  { dpr: 1.5, shadow: 2048, soft: true },
+  { dpr: 1.25, shadow: 2048, soft: true },
+  { dpr: 1, shadow: 1024, soft: false },
+  { dpr: 0.85, shadow: 1024, soft: false, still: true },
+  { dpr: 0.7, shadow: 1024, soft: false, still: true },
 ];
 let qLevel = (() => { try { return Math.max(0, Math.min(QUALITY.length - 1, (+localStorage.getItem(QKEY) || 0) - 1)); } catch (e) { return 0; } })();
 if (params.has('q')) qLevel = Math.max(0, Math.min(QUALITY.length - 1, +params.get('q') || 0));
-let shadowFrame = 0;
+const blobs = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(0,0,0,1)');
+  r.addColorStop(0.55, 'rgba(0,0,0,0.75)');
+  r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 64, 64);
+  const m = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), color: '#000000', transparent: true, opacity: 0.32, depthWrite: false }), 96);
+  m.frustumCulled = false;
+  m.renderOrder = 1;
+  m.count = 0;
+  m.visible = false;
+  root.add(m);
+  return m;
+})();
+const _blob = new THREE.Matrix4();
+function updateBlobs() {
+  if (!blobs.visible) return;
+  let n = 0;
+  const put = (ch) => {
+    if (n >= 96 || !ch.root.parent) return;
+    const s = ch.scale * 1.05 * ch.root.scale.x;
+    _blob.makeScale(s, 1, s).setPosition(ch.pos.x, 0.025, ch.pos.z);
+    blobs.setMatrixAt(n++, _blob);
+  };
+  for (const ch of carriers) put(ch);
+  for (const ch of staff) put(ch);
+  for (const c of customers) put(c.ch);
+  for (const g of guests) put(g.ch);
+  blobs.count = n;
+  blobs.instanceMatrix.needsUpdate = true;
+}
+function draw() {
+  if (!blobs.visible || !renderer.shadowMap.needsUpdate) { renderer.render(scene, camera); return; }
+  const off = [];
+  root.traverse((o) => { if (o.castShadow && !o.userData.still) { o.castShadow = false; off.push(o); } });
+  renderer.render(scene, camera);
+  for (const o of off) o.castShadow = true;
+}
 function applyQuality() {
   const q = QUALITY[qLevel];
   renderer.setPixelRatio(Math.min(devicePixelRatio, q.dpr));
@@ -1511,10 +1610,11 @@ function applyQuality() {
     sun.shadow.mapSize.set(q.shadow, q.shadow);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
   }
-  renderer.shadowMap.autoUpdate = q.every === 1;
+  blobs.visible = !!q.still;
+  renderer.shadowMap.autoUpdate = !q.still;
   renderer.shadowMap.needsUpdate = true;
 }
-const fps = { t: 0, n: 0, wait: 2 };
+const fps = { t: 0, n: 0, wait: 2, probe: 0, floor: false };
 function watchFps(raw) {
   if (params.has('q')) return;
   if (document.hidden || paused || introT < INTRO) { fps.t = 0; fps.n = 0; return; }
@@ -1525,16 +1625,18 @@ function watchFps(raw) {
   if (fps.t < 2.5 && !(fps.t > 1 && fps.n / fps.t < 25)) return;
   const f = fps.n / fps.t;
   fps.t = 0; fps.n = 0;
-  if (f < 48 && qLevel < QUALITY.length - 1) {
+  if (fps.probe) {
+    if (f < fps.probe * 1.06) { qLevel--; fps.floor = true; applyQuality(); try { localStorage.setItem(QKEY, String(qLevel)); } catch (e) {  } }
+    fps.probe = 0;
+    return;
+  }
+  if (f < 48 && qLevel < QUALITY.length - 1 && !fps.floor) {
     qLevel++;
+    if (qLevel === QUALITY.length - 1) fps.probe = f;
     applyQuality();
     fps.wait = 1.5;
     try { localStorage.setItem(QKEY, String(qLevel)); } catch (e) {  }
   }
-}
-function shadowTick() {
-  const every = QUALITY[qLevel].every;
-  if (every > 1 && ++shadowFrame % every === 0) renderer.shadowMap.needsUpdate = true;
 }
 
 function resize() {
@@ -1563,10 +1665,10 @@ let time = 0;
 function frame() {
   const raw = clock.getDelta();
   watchFps(raw);
-  shadowTick();
+  if (shadowsAt && performance.now() >= shadowsAt) { shadowsAt = 0; renderer.shadowMap.needsUpdate = true; }
 
   let dt = Math.min(raw * timeScale, timeScale === 1 ? 0.066 : Math.min(0.35, 0.025 * timeScale));
-  if (paused || hostPaused) { hud.tick(time); renderer.render(scene, camera); requestAnimationFrame(frame); return; }
+  if (paused || hostPaused) { hud.tick(time); draw(); requestAnimationFrame(frame); return; }
   time += dt;
 
   handleInput();
@@ -1618,11 +1720,12 @@ function frame() {
 
   if (!window.bt || !window.bt.freeCam) updateCamera(dt);
   hud.tick(time);
-  if (!noRender) renderer.render(scene, camera);
+  updateBlobs();
+  if (!noRender) draw();
   requestAnimationFrame(frame);
 }
 
-renderer.render(scene, camera);
+draw();
 document.getElementById('loading')?.classList.add('done');
 CG.loadingStop();
 CG.gameplayStart();
@@ -1633,7 +1736,7 @@ requestAnimationFrame(frame);
 
 
 window.bt = {
-  unlock(n) { localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 500, unlockIndex: n, padPaid: 0 })); location.reload(); },
+  unlock(n) { restarting = true; localStorage.setItem(SAVE_KEY, JSON.stringify({ money: 500, unlockIndex: n, padPaid: 0 })); location.reload(); },
   player, input, scene, renderer, THREE, sun, camera, freeCam: false, nature, worldRoot: root, hud,
   state() { return { q: qLevel, dpr: renderer.getPixelRatio(), calls: renderer.info.render.calls, tris: renderer.info.render.triangles, paused, time: time.toFixed(1), customers: customers.length, queues: counters.map((c) => c.queue.length), pos: customers.slice(0, 3).map((c) => [c.ch.pos.x.toFixed(1), c.ch.pos.z.toFixed(1), c.ch.root.visible]) }; },
   money(v) { if (v === undefined) return money; money += v; },
@@ -1641,5 +1744,5 @@ window.bt = {
   outfits: OUTFITS, setSkin,
   game: () => ({ trashes, ovens, machines, tables, counters, pad, unlockIndex, unlocks: unlocks.length, up, helpers, time, boostTime, paused, stats, sellable: sellable(), guests: guests.length }),
   buyUpgrade, upgradeList, offerBoost, startBoost, needed, demands, sourceOf, sources,
-  reset() { CG.removeItem(SAVE_KEY); location.reload(); },
+  reset() { restarting = true; CG.removeItem(SAVE_KEY); location.reload(); },
 };
