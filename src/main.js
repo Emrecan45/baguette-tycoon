@@ -841,6 +841,15 @@ const useful = (kind, carry) => carry.items.reduce((a, it) => a + (it.userData.k
 function handleCarrier(ch, dt) {
   const p = ch.pos, carry = ch.carry, h = ch.helper;
 
+  if (h && h.role === 'waiter' && h.want && !carry.full) for (const c of counters) {
+    const st = c.stockFor(h.want);
+    if (!st || st.empty || !c.drop.contains(p)) continue;
+    if (!transferReady(ch, dt)) return;
+    const t = st.take();
+    if (t) carry.addFlying(t.item, 1, 0.22, 0.8, fly, punch);
+    return;
+  }
+
   for (const o of sources()) {
     if (!o.pickup.contains(p) || carry.full || o.tray.empty) continue;
     if (h && h.want !== o.kind) continue;
@@ -1261,23 +1270,44 @@ function demands(role) {
       const st = c.stockFor(k), free = st.capacity - st.count;
       if (free > 0) list.push({ kind: k, zone: c.drop, amount: free, prio: (needed(k) ? 4 : 1) + (st.count < 3 ? 1 : 0) });
     }
-  } else if (role === 'waiter') {
+  }
+  return list;
+}
 
-    const total = {};
-    for (const tb of tables) if (tb.state === 'wait') for (const o of tb.order) if (o.got < o.n) total[o.kind] = (total[o.kind] || 0) + o.n - o.got;
-    for (const tb of tables) if (tb.state === 'wait') for (const o of tb.order) if (o.got < o.n) list.push({ kind: o.kind, zone: tb.zone, amount: total[o.kind], prio: 3 + (o.kind === 'cafe' ? 0 : 0.5) });
-
-    for (const kind of Object.keys(total)) {
-      if (sources().some((o) => o.kind === kind && !o.tray.empty)) continue;
+function serve(h) {
+  const { ch } = h, carry = ch.carry;
+  const need = {};
+  for (const tb of tables) if (tb.state === 'wait') for (const o of tb.order) if (o.got < o.n) need[o.kind] = (need[o.kind] || 0) + o.n - o.got;
+  for (const it of carry.items) if (need[it.userData.kind]) need[it.userData.kind]--;
+  const has = (k) => carry.items.reduce((a, it) => a + (it.userData.kind === k ? 1 : 0), 0);
+  const far = (z) => Math.hypot(z.cx - ch.pos.x, z.cz - ch.pos.z);
+  const serving = carry.items.some((it) => tables.some((tb) => tb.state === 'wait' && tb.missing(it.userData.kind) > 0));
+  if (!carry.full) {
+    let best = null;
+    for (const kind of Object.keys(need)) {
+      if (need[kind] <= 0) continue;
+      const src = sourceOf(kind, ch.pos);
+      if (src && (!best || far(src.pickup) < far(best.zone))) best = { kind, zone: src.pickup };
+      for (const c of counters) if (c.stockFor(kind)?.count && (!best || far(c.drop) < far(best.zone))) best = { kind, zone: c.drop };
+    }
+    if (best && (carry.empty || far(best.zone) < at(3))) { h.want = best.kind; steer(ch, best.zone.center); return; }
+    if (!best && !serving) {
       for (const m of machines) {
-        if (m.kind !== kind || !m.input || m.inputNeed <= 0) continue;
-        const coming = m.inStack.count * m.yield + m.charge;
-        if (coming >= total[kind]) continue;
-        list.push({ kind: m.input, zone: m.drop, amount: Math.min(m.inputNeed, Math.ceil((total[kind] - coming) / m.yield)), prio: 2.5 });
+        if (!m.input || !need[m.kind] || m.inStack.count * m.yield + m.charge >= need[m.kind]) continue;
+        if (has(m.input) >= Math.min(m.inputNeed, Math.ceil(need[m.kind] / m.yield))) continue;
+        const src = sourceOf(m.input, ch.pos);
+        if (src) { h.want = m.input; steer(ch, src.pickup.center); return; }
       }
     }
   }
-  return list;
+  h.want = null;
+  let goal = null;
+  for (const tb of tables) {
+    if (tb.state !== 'wait' || !carry.items.some((it) => tb.missing(it.userData.kind) > 0)) continue;
+    if (!goal || far(tb.zone) < far(goal)) goal = tb.zone;
+  }
+  if (!goal) goal = machines.find((m) => m.input && has(m.input) && m.inputNeed > 0)?.drop;
+  steer(ch, goal ? goal.center : HOME.waiter);
 }
 const sourceOf = (kind, from) => {
   let best = null, bd = Infinity;
@@ -1316,6 +1346,7 @@ function updateHelpers(dt) {
       steer(ch, best ? best.zone.center : HOME.cleaner);
       continue;
     }
+    if (h.role === 'waiter') { serve(h); continue; }
     if (h.phase === 'fetch') {
       if (!ch.carry.empty && (ch.carry.full || !h.want)) { h.phase = 'deliver'; continue; }
       if (!h.want) {
