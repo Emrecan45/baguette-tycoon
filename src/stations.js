@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Pal, box, group, newItem, newBill } from './art.js';
+import { Pal, box, group, bake, newItem, newBill } from './art.js';
 import { Kit } from './decor.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { prop } from './assets.js';
@@ -17,7 +17,8 @@ export class Zone {
     this.pulse = 0;
     this.visual = group(parent, [cx, 0, cz], [0, 0, 0], 'Zone');
     box(this.visual, [w, 0.03, d], 0.2, border, [0, 0.015, 0], [0, 0, 0], false);
-    this.inner = box(this.visual, [w - 0.16, 0.03, d - 0.16], 0.14, fill, [0, 0.02, 0], [0, 0, 0], false);
+    box(this.visual, [w - 0.16, 0.03, d - 0.16], 0.14, fill, [0, 0.02, 0], [0, 0, 0], false);
+    bake(this.visual, false);
     if (icon) floorIcon(this.visual, icon, Math.min(w, d) * 0.82, 0.04, iconColor, 0.9);
   }
   get center() { return new THREE.Vector3(this.cx, 0, this.cz); }

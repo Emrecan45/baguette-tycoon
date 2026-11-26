@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
-import { toLit } from './lit.js';
+import { toLit, bakeColors } from './lit.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -29,7 +29,7 @@ function litify(root) {
     if (!o.isMesh) return;
     o.castShadow = true;
     o.receiveShadow = true;
-    const fix = (m) => toLit(m);
+    const fix = (m) => { const l = toLit(m); if (l && l.transparent) l.forceSinglePass = true; return l; };
     o.material = Array.isArray(o.material) ? o.material.map(fix) : fix(o.material);
   });
 }
@@ -58,11 +58,26 @@ export async function loadAssets(audioCtx, onProgress) {
   await Promise.all([...models, ...audio]);
 }
 
-export function prop(name, scale = 1) {
+const propTemplates = new Map();
+function propTemplate(name) {
+  if (propTemplates.has(name)) return propTemplates.get(name);
   const src = gltfs.props.scene.getObjectByName('P_' + name);
   if (!src) throw new Error('prop manquant : ' + name);
+  const t = new THREE.Group();
+  t.name = src.name;
+  for (const p of bakeColors(propMeshes(name))) {
+    const m = new THREE.Mesh(p.geometry, p.material);
+    p.matrix.decompose(m.position, m.quaternion, m.scale);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    t.add(m);
+  }
+  propTemplates.set(name, t);
+  return t;
+}
 
-  const obj = src.clone(true);
+export function prop(name, scale = 1) {
+  const obj = propTemplate(name).clone(true);
   const g = new THREE.Group();
   const inner = new THREE.Group();
   inner.scale.setScalar(scale);
