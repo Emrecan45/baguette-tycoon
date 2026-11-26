@@ -174,8 +174,8 @@ const unlocks = [
 
   { title: 'oven', price: P(15), x: 0.6, z: 3.65, ghost: ovenGhost(0.6), apply: (i) => addOven(0.6, 6.0, i) },
   { title: 'counter', price: P(100), x: 2.6, z: 0.3, ghost: [['counter', at(2.6), at(-1.0)]], apply: (i) => addCounter(2.6, i) },
-  { title: 'oven', price: P(200), x: 4.0, z: 3.65, ghost: ovenGhost(4.0), apply: (i) => addOven(4.0, 6.0, i) },
-  { title: 'helper', price: P(320), x: 4.9, z: 2.6, apply: (i) => addHelper(4.9, 2.6, i, 'mitron') },
+  { title: 'helper', price: P(200), x: 4.9, z: 2.6, apply: (i) => addHelper(4.9, 2.6, i, 'mitron') },
+  { title: 'oven', price: P(320), x: 4.0, z: 3.65, ghost: ovenGhost(4.0), apply: (i) => addOven(4.0, 6.0, i) },
   { title: 'basket', price: P(450), x: 4.9, z: 2.6, apply: (i) => biggerBasket(i) },
 
   { title: 'fournil', price: P(650), x: -1.8, z: 5.3, apply: (i) => openArea('fournil', i) },
